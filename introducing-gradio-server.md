@@ -1,16 +1,16 @@
 ---
-title: "gradio.Server: Build Any Custom Frontend with Gradio's Backend"
+title: "Any Custom Frontend with Gradio's Backend"
 thumbnail: /blog/assets/gradio-server/thumbnail.png
 authors:
 - user: ysharma
 - user: abidlabs
 ---
 
-# `gradio.Server`: Build Any Custom Frontend with Gradio's Backend
+# `gradio.Server`: Any Custom Frontend with Gradio's Backend
 
 A few weeks ago, we wrote about [one-shotting full web apps with `gr.HTML`](https://huggingface.co/blog/gradio-html-one-shot-apps): building rich, interactive frontends entirely inside Gradio using custom HTML, CSS, and JavaScript. That unlocked a lot. But what if that's not enough?
 
-What if you want to **build with your own frontend framework entirely** — React, Svelte, or even plain HTML/JS — while still benefiting from Gradio's queuing system, API infrastructure, MCP support, and ZeroGPU on Spaces?
+What if you want to **build with your own frontend framework entirely** like React, Svelte, or even plain HTML/JS, while still benefiting from Gradio's queuing system, API infrastructure, MCP support, and ZeroGPU on Spaces?
 
 That's exactly the problem **`gradio.Server`** solves. And it changes what's possible with Gradio and Hugging Face Spaces.
 
@@ -103,7 +103,7 @@ That's it. ~50 lines of Python. The model loads at startup, `@spaces.GPU` handle
 
 ### Why `@app.api()` Instead of a Plain FastAPI Route?
 
-If this were a regular FastAPI app, you'd define a `@app.post()` route for background removal. That works — until two users hit it at once. Without concurrency management, both requests fight for the GPU, and the app crashes or returns garbage.
+If this were a regular FastAPI app, you'd define a `@app.post()` route for background removal. That works, until two users hit it at once. Without concurrency management, both requests fight for the GPU, and the app crashes or returns garbage.
 
 `@app.api()` solves this. It wraps your function with Gradio's queuing engine: requests are serialized, concurrency is controlled, and on ZeroGPU Spaces, GPU allocation is handled automatically via `@spaces.GPU`. As a bonus, any `@app.api()` endpoint is also callable via `gradio_client`, so other apps or scripts can use your Space programmatically:
 
@@ -138,7 +138,7 @@ const result = await client.predict("/remove_background", {
 });
 foregroundLayer.src = result.data[0].url;  // transparent PNG
 ```
-This is the key part: by using the Gradio JS client rather than a raw `fetch()` call, the frontend goes through Gradio's queue. That means concurrency is managed, GPU requests don't collide, and you could even show queue position or progress to the user. Everything else — text rendering, layer compositing, export — happens in the browser.
+This is the key part: by using the Gradio JS client rather than a raw `fetch()` call, the frontend goes through Gradio's queue. That means concurrency is managed, GPU requests don't collide, and you could even show queue position or progress to the user. Everything else, text rendering, layer compositing, export, happens in the browser.
 
 ## What This Unlocks
 
@@ -151,7 +151,7 @@ Here's what was **not possible** before `gradio.Server`:
 | `gradio_client` only worked with Gradio component apps | `@app.api()` endpoints are client-compatible |
 | Choosing between Gradio's infra and design freedom | You get both |
 
-With `gradio.Server`, **Gradio doubles as a backend framework — use its UI system when you want it, bring your own frontend when you don't.**
+With `gradio.Server`, **Gradio doubles as a backend framework, use its UI system when you want it, bring your own frontend when you don't.**
 
 If you want Gradio's UI, you can use `gr.Blocks`, `gr.Interface`, `gr.ChatInterface`. If you want your own UI, use `gradio.Server` and bring whatever frontend you like. Either way, you get Spaces hosting, API queuing, `gradio_client` access, the full HF ecosystem, and more.
 
