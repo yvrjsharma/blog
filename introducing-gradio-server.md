@@ -6,7 +6,7 @@ authors:
 - user: abidlabs
 ---
 
-# `gradio.Server`: Any Custom Frontend with Gradio's Backend
+# gradio.Server: Any Custom Frontend with Gradio's Backend
 
 A few weeks ago, we wrote about [one-shotting full web apps with `gr.HTML`](https://huggingface.co/blog/gradio-html-one-shot-apps): building rich, interactive frontends entirely inside Gradio using custom HTML, CSS, and JavaScript. That unlocked a lot. But what if that's not enough?
 
