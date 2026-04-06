@@ -1,45 +1,35 @@
 ---
-title: "Using Gradio Server: A 700-Line Custom Frontend, Powered by 40 Lines of Gradio"
-thumbnail: /blog/assets/introducing-gradio-server/thumbnail.png
+title: "gradio.Server: Build Any Custom Frontend with Gradio's Backend"
+thumbnail: /blog/assets/gradio-server/thumbnail.png
 authors:
 - user: ysharma
 - user: abidlabs
 ---
 
-# Using Gradio Server:  A 700-Line Custom Frontend, Powered by 40 Lines of Gradio
+# `gradio.Server`: Build Any Custom Frontend with Gradio's Backend
 
-A few weeks ago, I wrote about [one-shotting full web apps with `gr.HTML`](https://huggingface.co/blog/gradio-html-one-shot-apps): building rich, interactive frontends entirely inside Gradio using custom HTML, CSS, and JavaScript. That unlocked a lot. But there was still a wall.
+A few weeks ago, we wrote about [one-shotting full web apps with `gr.HTML`](https://huggingface.co/blog/gradio-html-one-shot-apps): building rich, interactive frontends entirely inside Gradio using custom HTML, CSS, and JavaScript. That unlocked a lot. But what if that's not enough?
 
-What if your app needs a **fully custom frontend**, a real index.html with hundreds of lines of interactive UI, backed by ML models running on the server?
+What if you want to **build with your own frontend framework entirely** — React, Svelte, or even plain HTML/JS — while still benefiting from Gradio's queuing system, API infrastructure, MCP support, and ZeroGPU on Spaces?
 
 That's exactly the problem **`gradio.Server`** solves. And it changes what's possible with Gradio and Hugging Face Spaces.
 
-## No more Frontend lock-in to Gradio's component system
 
-Before `gradio.Server`, you had two choices when building on Spaces:
-
-1. **Use Gradio's component system** : great for ML demos, but you're locked into Gradio's layout and widget vocabulary. Want a canvas with drag-and-drop text layers, perspective transforms, and a custom control panel? These kinds of web apps are very difficult to fire-up using `gr.HTML` alone.
-
-2. **Ditch Gradio entirely** : spin up a raw FastAPI/Flask app, lose Gradio's built-in API infrastructure, queuing, `gradio_client` compatibility, ZeroGPU, and the seamless Spaces integration that comes with it.
-
-Neither option worked for what I wanted to build this time.
-
-## What I Wanted to Build
+## What We Wanted to Build
 
 <video alt="Using gradio.Server to use an ML backend to remove the image background and then creating a fast and responsive custom front end on top of it" autoplay loop muted playsinline>
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/gradio-server/text-behind-image-for-blog.mp4" type="video/mp4">
 </video>
-
 
 **[Text Behind Image](https://huggingface.co/spaces/ysharma/text-behind-image)** : an editor where you upload a photo, the background gets removed using an ML model, and then you place stylized text *between* the foreground subject and the background. The text appears to sit behind the person or object in the image.
 
 This needs:
 - A **drag-and-drop canvas** with layered rendering (background → text → foreground)
 - A **rich control panel** with sliders for font size, weight, letter spacing, color, opacity, stroke, shadow, 3D extrusion, perspective transforms, and more
-- A **backend ML endpoint** that calls a background-removal model and returns a transparent PNG
+- A **backend ML endpoint** that runs a background-removal model and returns a transparent PNG
 - **Export to PNG** on the client side
 
-There's no way to express this UI in Gradio components. It's a full web application. But I still wanted the backend power of Gradio. Specifically, the ability to call other Spaces via `gradio_client`, queuing for high performance, and host the whole thing on HF Spaces without infrastructure headaches.
+There's no way to express this UI in Gradio components. It's a full web application. But We still wanted the backend power of Gradio: queuing, concurrency management, ZeroGPU support, and hosting on HF Spaces without infrastructure headaches.
 
 ## Enter `gradio.Server`
 
@@ -48,39 +38,54 @@ There's no way to express this UI in Gradio components. It's a full web applicat
 Here's the entire backend for Text Behind Image:
 
 ```python
+import os
+import torch
+from PIL import Image
+from torchvision import transforms
+from transformers import AutoModelForImageSegmentation
 from gradio import Server
-from gradio_client import Client, handle_file
-from fastapi import UploadFile, File
+from gradio.data_classes import FileData
 from fastapi.responses import HTMLResponse
+import spaces
+
+torch.set_float32_matmul_precision("high")
+
+birefnet = AutoModelForImageSegmentation.from_pretrained(
+    "ZhengPeng7/BiRefNet", trust_remote_code=True
+)
+birefnet.to("cuda")
+birefnet.float()
+
+transform_image = transforms.Compose([
+    transforms.Resize((1024, 1024)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+])
 
 app = Server()
 
-bg_client = Client("ysharma/background-removal-copy")
+
+@spaces.GPU
+def segment(image: Image.Image) -> Image.Image:
+    """Run BiRefNet segmentation to produce a transparency mask."""
+    image_size = image.size
+    input_images = transform_image(image).unsqueeze(0).to("cuda")
+    with torch.no_grad():
+        preds = birefnet(input_images)[-1].sigmoid().cpu()
+    pred = preds[0].squeeze()
+    mask = transforms.ToPILImage()(pred).resize(image_size)
+    image.putalpha(mask)
+    return image
 
 
 @app.api(name="remove_background")
-def remove_background(image_path: FileData) -> str:
-    """Remove background from an image. Returns path to transparent PNG."""
-    result = bg_client.predict(f=handle_file(image_path["path"]), api_name="/png")
-    return result
-
-
-@app.post("/api/remove-background")
-async def remove_bg_endpoint(file: UploadFile = File(...)):
-    """FastAPI endpoint for the custom frontend to call."""
-    suffix = os.path.splitext(file.filename or ".png")[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
-    try:
-        result_path = bg_client.predict(
-            f=handle_file(tmp_path), api_name="/png"
-        )
-        with open(result_path, "rb") as f:
-            fg_b64 = base64.b64encode(f.read()).decode()
-        return {"foreground": f"data:image/png;base64,{fg_b64}"}
-    finally:
-        os.unlink(tmp_path)
+def remove_background(image_path: FileData) -> FileData:
+    """Remove background from an image. Returns transparent PNG."""
+    im = Image.open(image_path["path"]).convert("RGB")
+    result = segment(im)
+    out_path = image_path["path"].rsplit(".", 1)[0] + ".png"
+    result.save(out_path)
+    return FileData(path=out_path)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -90,50 +95,50 @@ async def homepage():
         return f.read()
 
 
-app.launch()
+app.launch(show_error=True)
+
 ```
 
-That's it. ~40 lines of Python. Let's break down what's happening.
+That's it. ~50 lines of Python. The model loads at startup, `@spaces.GPU` handles ZeroGPU allocation, and `gradio.Server` manages queuing and concurrency. Let's break down what's happening.
 
-### Two Kinds of Endpoints, One App
+### Why `@app.api()` Instead of a Plain FastAPI Route?
 
-The @app.api() decorator registers a Gradio API endpoint, giving you queuing, concurrency limits, and making it callable via `gradio_client`:
+If this were a regular FastAPI app, you'd define a `@app.post()` route for background removal. That works — until two users hit it at once. Without concurrency management, both requests fight for the GPU, and the app crashes or returns garbage.
+
+`@app.api()` solves this. It wraps your function with Gradio's queuing engine: requests are serialized, concurrency is controlled, and on ZeroGPU Spaces, GPU allocation is handled automatically via `@spaces.GPU`. As a bonus, any `@app.api()` endpoint is also callable via `gradio_client`, so other apps or scripts can use your Space programmatically:
 
 ```python
 from gradio_client import Client, handle_file
-client = Client("ysharma/text-behind-image-cp")
+client = Client("ysharma/text-behind-image")
 result = client.predict(
       image_path=handle_file("photo.jpg"),
       api_name="/remove_background"
   )
 ```
 
-
-The `@app.post()` and `@app.get()` decorators are **standard FastAPI routes**, where the custom frontend calls `/api/remove-background` directly with a file upload, and `GET /` serves the HTML page.
-
-Both coexist naturally because `Server` *is* a FastAPI app.
+Meanwhile, `@app.get("/")` is a standard FastAPI route that serves the HTML page. Both coexist naturally because `Server` *is* a FastAPI app.
 
 ### The Frontend: Pure HTML/CSS/JS
 
-The `index.html` is a self-contained ~700-line web application. No React, no build step, no bundler. Just vanilla HTML with:
+The `index.html` in this example is a self-contained ~1300-line web application. No React, no build step, no bundler. Just vanilla HTML with:
 
 - A **three-layer canvas**: background image → text layer → foreground (transparent PNG) stacked with CSS `z-index`
 - **Drag-and-drop text positioning** using pointer events
 - A **control panel** with 20+ parameters: font family (25+ fonts), size, weight, spacing, color, opacity, background fill, stroke, shadow, 3D extrusion depth and angle, rotation, skew, and full CSS perspective transforms
 - **Client-side PNG export** using `<canvas>` compositing
 
-The frontend talks to the backend with a single `fetch()` call:
+The frontend talks to the backend using the [Gradio JS Client](https://www.gradio.app/guides/getting-started-with-the-js-client):
 
 ```javascript
-const resp = await fetch('/api/remove-background', {
-    method: 'POST',
-    body: formData
-});
-const data = await resp.json();
-foregroundLayer.src = data.foreground;  // base64 transparent PNG
-```
+import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
 
-That's the entire frontend-backend contract. Upload an image, get back a transparent foreground. Everything else, including text rendering, layer compositing, and export, happens in the browser.
+const client = await Client.connect(window.location.origin);
+const result = await client.predict("/remove_background", {
+    image_path: handle_file(file),
+});
+foregroundLayer.src = result.data[0].url;  // transparent PNG
+```
+This is the key part: by using the Gradio JS client rather than a raw `fetch()` call, the frontend goes through Gradio's queue. That means concurrency is managed, GPU requests don't collide, and you could even show queue position or progress to the user. Everything else — text rendering, layer compositing, export — happens in the browser.
 
 ## What This Unlocks
 
@@ -146,7 +151,7 @@ Here's what was **not possible** before `gradio.Server`:
 | `gradio_client` only worked with Gradio component apps | `@app.api()` endpoints are client-compatible |
 | Choosing between Gradio's infra and design freedom | You get both |
 
-The mental model shift is simple: **Gradio is no longer just a UI framework. It's a backend framework that happens to also have a great UI system.**
+With `gradio.Server`, **Gradio doubles as a backend framework — use its UI system when you want it, bring your own frontend when you don't.**
 
 If you want Gradio's UI, you can use `gr.Blocks`, `gr.Interface`, `gr.ChatInterface`. If you want your own UI, use `gradio.Server` and bring whatever frontend you like. Either way, you get Spaces hosting, API queuing, `gradio_client` access, the full HF ecosystem, and more.
 
@@ -164,5 +169,5 @@ We'll dig into those in a follow-up post. Stay tuned.
 
 ## Recommended reading
 
-- Docs: [gradio.Serve](https://www.gradio.app/main/docs/gradio/server)
+- Docs: [gradio.Server](https://www.gradio.app/main/docs/gradio/server)
 - Guide: [Server mode](https://www.gradio.app/guides/server-mode) 
