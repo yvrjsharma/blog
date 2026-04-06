@@ -1,6 +1,6 @@
 ---
 title: "Any Custom Frontend with Gradio's Backend"
-thumbnail: /blog/assets/gradio-server/thumbnail.png
+thumbnail: /blog/assets/introducing-gradio-server/thumbnail.png
 authors:
 - user: ysharma
 - user: abidlabs
