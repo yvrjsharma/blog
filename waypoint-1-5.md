@@ -4,19 +4,19 @@ thumbnail: /blog/assets/overworld/waypoint-v1-5.png
 authors:
 - user: lapp0
   guest: true
-  org: overworld
+  org: Overworld
 - user: LouisCastricato
   guest: true
-  org: overworld
+  org: Overworld
 - user: ScottieFox
   guest: true
-  org: overworld
+  org: Overworld
 - user: shahbuland
   guest: true
-  org: overworld
+  org: Overworld
 - user: xAesthetics
   guest: true
-  org: overworld
+  org: Overworld
 ---
 
 # Waypoint-1.5: Higher-Fidelity Interactive Worlds for Everyday GPUs
