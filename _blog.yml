@@ -5167,7 +5167,6 @@
     - storage
     - announcement
     - xet
-
 - local: liberate-your-openclaw
   date: March 27, 2026
   tags:
@@ -5234,6 +5233,7 @@
     - world-model
     - game-dev
 
+
 - local: train-multimodal-sentence-transformers
   date: April 16, 2026
   tags:
@@ -5254,4 +5254,16 @@
     - community
     - claude
     - agents
+
+- local: ecom-rlve
+  date: April 16, 2026
+  tags:
+    - reinforcement-learning
+    - rlvr
+    - e-commerce
+    - agents
+    - llm
+    - training
+    - research
+    - open-source
 
