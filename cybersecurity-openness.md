@@ -1,11 +1,15 @@
 ---
 title: "AI and the Future of Cybersecurity: Why Openness Matters"
-thumbnail: /blog/assets/cybersecurity-openness/cybersecurity-openness-thumbnail.png
+thumbnail: /blog/assets/cybersecurity-openness/detective_huggy_thumbnail.png
 authors:
   - user: meg
   - user: yjernite
   - user: clem
 ---
+
+<div class="flex justify-center">
+<img src="assets/cybersecurity-openness/detective_huggy_thumbnail.png" alt="Huggy with a magnifying glass, against a backdrop with a gradient of black to white. Writing at the bottom in white says Cybersecurity and Openness" width="50%"/>
+</div>
 
 # AI and the Future of Cybersecurity: Why Openness Matters
 
@@ -53,6 +57,6 @@ For high-stakes organizations, starting from open, auditable foundations means s
 
 ## The Path Forward
 
-Attackers will develop models that take advantage of vulnerabilities. A significant part of the answer is leaning into transparent practices: open security reviews, published threat models, shared vulnerability databases, and open tooling that any team can adopt. The alternative – each organization trying to secure itself in isolation with proprietary tools – doesn’t scale against attackers who are coordinating and sharing techniques in their own communities.
+Attackers will develop models that take advantage of vulnerabilities. A significant part of the answer is leaning into transparent practices: open security reviews, published threat models, shared vulnerability databases, and open tooling that any team can adopt. The alternative of each organization trying to secure itself in isolation with proprietary tools doesn’t scale against attackers who are coordinating and sharing techniques in their own communities.
 
-The future of AI cybersecurity will be shaped less by any single model and more by the ecosystems that surround them. Openness provides defenders with the visibility, the control, the community, and the shared infrastructure to stay ahead. 
+The future of AI cybersecurity will be shaped less by any single model and more by the ecosystems that surround them. Openness provides defenders with the visibility, the control, the community, and the shared infrastructure to stay ahead.
