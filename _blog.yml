@@ -5276,10 +5276,6 @@
     - agents
     - llm
     - ethics
-    - gradio
-    - performance
-    - optimization
-    - guide
 
 - local: openai-privacy-filter-web-apps
   date: April 23, 2026

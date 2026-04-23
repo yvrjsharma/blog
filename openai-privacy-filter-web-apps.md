@@ -1,42 +1,42 @@
 ---
-title: "Read, redact, share: three apps on OpenAI Privacy Filter"
+title: "How to build scalable web apps with OpenAI's Privacy Filter"
 thumbnail: /blog/assets/openai-privacy-filter-web-apps/thumbnail.png
 authors:
 - user: ysharma
 - user: freddyaboulton
+- user: abidlabs
 ---
+# How to build scalable web apps with OpenAI's Privacy Filter 
 
-# Read, redact, share: three apps on OpenAI Privacy Filter
-
-OpenAI released Privacy Filter on the Hub this week: an open-source PII detector that labels text across eight categories in a single forward pass over a 128k context. [Model card](https://huggingface.co/openai/privacy-filter). I spent a few hours building with it and landed on three apps that each reveal a different slice of what it can do.
+OpenAI released Privacy Filter on the Hub this week: an open-source PII detector that labels text across eight categories in a single forward pass over a 128k context. [Model card](https://huggingface.co/openai/privacy-filter). We spent a few hours building with it and landed on three apps that each reveal a different slices of what it can do.
 
 - [**Document Privacy Explorer**](https://huggingface.co/spaces/ysharma/OPF-Document-PII-Explorer): drop in a PDF or DOCX, read the document back with every PII span highlighted in place.
-- [**Image Anonymizer**](https://huggingface.co/spaces/ysharma/OPF-Image-Anonymizer): drop in a image, get it back with black bars over names, emails, and account numbers, editable on a canvas.
+- [**Image Anonymizer**](https://huggingface.co/spaces/ysharma/OPF-Image-Anonymizer): upload an image, get it back with redacted black bars over names, emails, and account numbers. The image is also editable on a canvas so you can make your own annotations before downloading.
 - [**SmartRedact Paste**](https://huggingface.co/spaces/ysharma/OPF-SmartRedact-Paste): paste sensitive text, share a public URL that serves the redacted version, keep a private reveal link for yourself.
 
-All three are built on **`gradio.Server`** ([intro post](https://huggingface.co/blog/introducing-gradio-server)), which lets you pair custom HTML/JS frontends with Gradio's queueing, ZeroGPU allocation, and `gradio_client` SDK. In all these apps, **`gradio.Server`** plays the same backend role, and that consistency is exactly what makes it really powerful.
+All three are built on [gradio.Server](https://huggingface.co/blog/introducing-gradio-server), which lets you pair custom HTML/JS frontends with Gradio's queueing, ZeroGPU allocation, and `gradio_client` SDK. In all these apps, **`gradio.Server`** plays the same backend role, and that consistency is exactly what makes it really powerful.
 
 ## The model
 
-Privacy Filter is a 1.5B-parameter model with 50M active parameters. PII categories are `private_person`, `private_address`, `private_email`, `private_phone`, `private_url`, `private_date`, `account_number`, `secret`. Context is 128,000 tokens. License is Apache 2.0. Achieves state-of-the-art performance on the PII-Masking-300k benchmark. Full numbers and methodology are in the [official release blog](https://openai.com/index/introducing-openai-privacy-filter/).
+Privacy Filter is a 1.5B-parameter model with 50M active parameters, permissively licensed under Apache 2.0. PII categories are `private_person`, `private_address`, `private_email`, `private_phone`, `private_url`, `private_date`, `account_number`, `secret`. Context is 128,000 tokens. Achieves state-of-the-art performance on the [PII-Masking-300k benchmark](https://huggingface.co/datasets/ai4privacy/pii-masking-300k). Full numbers and methodology are in the [official release blog](https://openai.com/index/introducing-openai-privacy-filter/).
 
 ## 1. Document Privacy Explorer
+Try it at [ysharma/OPF-Document-PII-Explorer](https://huggingface.co/spaces/ysharma/OPF-Document-PII-Explorer).
 
 <video alt="Using gradio.Server and OpenAI Privacy Filter model to build an app that can redact PII from any given document" autoplay loop muted playsinline>
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/
-openai-privacy-filter-web-apps/doc-pii-explorer.mp4" type="video/mp4">
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/openai-privacy-filter-web-apps/doc-pii-explorer.mp4" type="video/mp4">
 </video>
 
 **User problem.** You want to read a PII-heavy document (a contract, a resume, an exported chat log) with every detected span highlighted by category, a filter in the sidebar, and a summary dashboard up top. The reading experience should feel like a normal document, not a form.
 
 **What Privacy Filter does here.** The whole file goes through in a single 128k-context forward pass, so there's no chunking, no stitching, and span offsets line up directly with the rendered text. BIOES decoding keeps span boundaries clean through long ambiguous runs.
 
-**What `gr.Server` does here.** You could wire this up in Blocks with `gr.HighlightedText` and a sidebar, and it would work. The reading experience I wanted (serif body, category filters that toggle CSS classes client-side instead of re-running the model, a summary dashboard that doesn't force a page re-render) was easier to hand-author than to compose. `gr.Server` lets me serve the reader view as a single HTML file and hit one POST for the spans:
+**What `gr.Server` does here.** You could wire this up in Blocks with `gr.HighlightedText` and a sidebar, and it would work. The reading experience we wanted (serif body, category filters that toggle CSS classes client-side instead of re-running the model, a summary dashboard that doesn't force a page re-render) was easier to hand-author than to compose. `gr.Server` lets us serve the reader view as a single HTML file and expose the model behind one queued endpoint:
 
 ```python
 import gradio as gr
-from fastapi import UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
+from gradio.data_classes import FileData
 
 server = gr.Server()
 
@@ -44,25 +44,34 @@ server = gr.Server()
 async def homepage():
     return FRONTEND_HTML                           # reader view; see app.py
 
-@server.post("/api/analyze")
-async def analyze_document(file: UploadFile = File(...)):
-    text = extract_text(file)                      # PyMuPDF / python-docx
+@server.api(name="analyze_document")
+def analyze_document(file: FileData) -> dict:
+    text = extract_text(file["path"])              # PyMuPDF / python-docx
     source_text, spans = run_privacy_filter(text)  # single 128k pass
-    return JSONResponse({
+    return {
         "text":  source_text,
         "spans": spans,                            # [{start, end, label}, ...]
         "stats": compute_stats(source_text, spans),
-    })
-
-@server.api(name="analyze_text")
-def analyze_text_api(text: str) -> str:
-    source_text, spans = run_privacy_filter(text)
-    return json.dumps({"text": source_text, "spans": spans})
+    }
 ```
 
-`@server.api(name="analyze_text")` is the same logic without the file upload, callable from any `gradio_client`. Try it at [ysharma/OPF-Document-PII-Explorer](https://huggingface.co/spaces/ysharma/OPF-Document-PII-Explorer).
+Note the decorator: `@server.api(name="analyze_document")`, not a plain `@server.post`. That's the piece that plugs the handler into Gradio's queue, so concurrent uploads are serialized, `@spaces.GPU` composes correctly on ZeroGPU, and the same endpoint is reachable from both the browser and `gradio_client` with no duplicated code. The browser calls it with the Gradio JS client:
+
+```html
+<script type="module">
+import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+const client = await Client.connect(window.location.origin);
+
+async function uploadFile(file) {
+  const result = await client.predict("/analyze_document", { file: handle_file(file) });
+  renderResults(result.data[0]);                   // { text, spans, stats }
+}
+</script>
+```
+
 
 ## 2. Image Anonymizer
+Try it at [ysharma/OPF-Image-Anonymizer](https://huggingface.co/spaces/ysharma/OPF-Image-Anonymizer).
 
 <video alt="Using gradio.Server and OpenAI Privacy Filter model to build an app that can redact PII from any given image" autoplay loop muted playsinline>
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/
@@ -73,26 +82,27 @@ openai-privacy-filter-web-apps/image-pii-redact.mp4" type="video/mp4">
 
 **What Privacy Filter does here.** Tesseract runs OCR and returns per-word bounding boxes. The backend reconstructs the full text with a char-offset to box map, then runs Privacy Filter once over the whole text. Detected character spans are looked up against the word map and joined into pixel rectangles per line.
 
-**What `gr.Server` does here.** `gr.ImageEditor` supports layered annotation and is a reasonable starting point for image redaction. The workflow I wanted (per-bar category metadata, toggle all bars in a category at once, client-side PNG export at natural resolution with no server round-trip) was cleaner to build on a custom `<canvas>` frontend. `gr.Server` hands back pixel rectangles over a plain POST and lets the canvas own everything else:
+**What `gr.Server` does here.** `gr.ImageEditor` supports layered annotation and is a reasonable starting point for image redaction. The workflow we wanted (per-bar category metadata, toggle all bars in a category at once, client-side PNG export at natural resolution with no server round-trip) was cleaner to build on a custom `<canvas>` frontend. `gr.Server` hands back pixel rectangles from one queued endpoint and lets the canvas own everything else:
 
 ```python
-@server.post("/api/detect")
-async def detect(file: UploadFile = File(...)):
-    img = Image.open(io.BytesIO(await file.read())).convert("RGB")
+@server.api(name="anonymize_screenshot")
+def anonymize_screenshot(image: FileData) -> dict:
+    img = Image.open(image["path"]).convert("RGB")
     full_text, char_to_box = ocr_image(img)        # per-word boxes + char map
     spans = run_privacy_filter(full_text)
     boxes = spans_to_pixel_boxes(spans, char_to_box)
-    return JSONResponse({
+    return {
         "image_data_url": pil_to_base64(img),
         "width":  img.width,
         "height": img.height,
         "boxes":  boxes,                           # [{x, y, w, h, label, text}, ...]
-    })
+    }
 ```
 
-Toggles, drags, new-bar drawing, and PNG export all happen in the browser. Edits never round-trip to the server. Try it at [ysharma/OPF-Image-Anonymizer](https://huggingface.co/spaces/ysharma/OPF-Image-Anonymizer).
+The frontend invokes it with `client.predict("/anonymize_screenshot", { image: handle_file(file) })`, the same pattern as above. Toggles, drags, new-bar drawing, and PNG export all happen in the browser; edits never round-trip to the server.
 
 ## 3. SmartRedact Paste
+Try it at [ysharma/OPF-SmartRedact-Paste](https://huggingface.co/spaces/ysharma/OPF-SmartRedact-Paste).
 
 <video alt="Using gradio.Server and OpenAI Privacy Filter model to build an app that can redact PII from any pasted text and generate a live link to share the redacted text" autoplay loop muted playsinline>
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/
@@ -103,22 +113,26 @@ openai-privacy-filter-web-apps/smartredact-paste.mp4" type="video/mp4">
 
 **What Privacy Filter does here.** Swap each detected span with a `<CATEGORY>` placeholder on the stored paste. That's the entire redaction step. Multilingual text (Spanish, French, Chinese, Hindi, and others in the model-card examples) routes through the same call with no change.
 
-**What `gr.Server` does here.** This is the app that genuinely couldn't exist in Blocks. It needs two distinct GET routes for the same paste ID, one public and one token-gated, and the URL shape matters because the reveal URL is the thing you keep. `gr.Blocks` doesn't expose custom routes, so there's no way to build `/view/{pid}?token=...` on top of it. `gr.Server` does, because it's a FastAPI app underneath:
+**What `gr.Server` does here.** This app needs two distinct GET routes for the same paste ID, one public and one token-gated, and the URL shape matters because the reveal URL is the thing you keep. `gr.Server` works here because it's a FastAPI app underneath — which is also why `@server.api` and plain `@server.get` can sit side by side in the same process. Note: this can also be built with `gr.Blocks()` by [mounting custom routes with FastAPI](https://www.gradio.app/docs/gradio/mount_gradio_app)  :
 
 ```python
-@server.post("/api/paste")
-async def create_paste(req: Request):
-    body = await req.json()
-    source_text, spans = run_privacy_filter(body["text"])
+# Model call → queued endpoint. Hit from the browser via
+# client.predict("/create_paste", { text, ttl }).
+@server.api(name="create_paste")
+def create_paste(text: str, ttl: str = "never") -> dict:
+    source_text, spans = run_privacy_filter(text)
     redacted = redact(source_text, spans)          # <CATEGORY> placeholders
     pid, reveal_token = secrets.token_urlsafe(6), secrets.token_urlsafe(22)
     PASTES[pid] = Paste(pid, reveal_token, source_text, redacted, spans,
-                        expires_at=_ttl(body.get("ttl")))  # see app.py
-    return JSONResponse({
+                        expires_at=_ttl(ttl))      # see app.py
+    return {
         "view_path":   f"/view/{pid}",
         "reveal_path": f"/view/{pid}?token={reveal_token}",
-    })
+    }
 
+# View page → plain FastAPI GET. No model, no queue needed, and we
+# actually want the bespoke URL shape `/view/{pid}?token=...` that a
+# queued endpoint couldn't give us.
 @server.get("/view/{pid}", response_class=HTMLResponse)
 async def view_paste(pid: str, token: str | None = None):
     p = _store_get(pid)                            # see app.py for store
@@ -128,17 +142,19 @@ async def view_paste(pid: str, token: str | None = None):
     return HTMLResponse(_render_view(p, revealed))
 ```
 
-A daemon thread evicts expired pastes every 30 seconds. An `@server.api(name="analyze_paste")` endpoint makes the whole flow callable from `gradio_client`. The whole service, including storage, is about 200 lines of application code because everything lives in one process. Try it at [ysharma/OPF-SmartRedact-Paste](https://huggingface.co/spaces/ysharma/OPF-SmartRedact-Paste).
+A daemon thread evicts expired pastes every 30 seconds. The whole service, including storage, is about 200 lines of application code because everything lives in one process.
 
-## What Server provides
+## What `gradio.Server` provides
 
-| App | What Server provides |
-| --- | --- |
-| Document Privacy Explorer | `GET /` serving the custom reader view; a single `POST /api/analyze` for spans |
-| Screenshot Anonymizer | `POST /api/detect` that returns pixel rectangles to a client-side `<canvas>` |
-| SmartRedact Paste | Two GET routes for the same paste ID, one token-gated, plus a background TTL sweeper |
+The split across all three apps is the same — anything that touches the model goes through `@server.api`, everything else stays on plain FastAPI routes:
 
-Each app also keeps a Gradio-side `@server.api` endpoint, so the model is callable through `gradio_client` without any extra plumbing.
+| App | Queued compute (`@server.api`) | Plain FastAPI routes |
+| --- | --- | --- |
+| Document Privacy Explorer | `analyze_document` — extract, detect, stats | `GET /` serves the custom reader view |
+| Image Anonymizer | `anonymize_screenshot` — OCR, detect, spans → pixel boxes | `GET /` + `GET /examples/*` serve the canvas UI and preloaded examples |
+| SmartRedact Paste | `create_paste` — detect, redact, mint IDs | `GET /` compose page, `GET /view/{pid}?token=...` public + token-gated views, `GET /api/paste/{pid}` JSON lookup |
+
+`@server.api` gives you Gradio's queue (serialized requests, correct `@spaces.GPU` composition on ZeroGPU, progress events) and it's what the browser hits through [`@gradio/client`](https://www.gradio.app/guides/getting-started-with-the-js-client). The same endpoint is also what `gradio_client` users hit from Python — one function, two SDKs, no duplicated code. Plain `@server.get`/`@server.post` are reserved for the static surfaces: HTML pages, file lookups, cheap dict reads. That's the rule of thumb from the [gradio.Server intro post](https://huggingface.co/blog/introducing-gradio-server), and it's what makes these three apps feel consistent even though their UIs are very different.
 
 ## Try them
 
