@@ -8,7 +8,7 @@ authors:
 ---
 # How to build scalable web apps with OpenAI's Privacy Filter 
 
-OpenAI released Privacy Filter on the Hub this week: an open-source PII detector that labels text across eight categories in a single forward pass over a 128k context. [Model card](https://huggingface.co/openai/privacy-filter). We spent a few hours building with it and landed on three apps that each reveals a different slice of what it can do.
+OpenAI released Privacy Filter on the Hub this week: an open-source personally-identifiable information (PII) detector that labels text across eight categories in a single forward pass over a 128k context. [Model card](https://huggingface.co/openai/privacy-filter). We spent a few hours building with it and landed on three apps that each reveals a different slice of what it can do.
 
 - [**Document Privacy Explorer**](https://huggingface.co/spaces/ysharma/OPF-Document-PII-Explorer): drop in a PDF or DOCX, read the document back with every PII span highlighted in place.
 - [**Image Anonymizer**](https://huggingface.co/spaces/ysharma/OPF-Image-Anonymizer): upload an image, get it back with redacted black bars over names, emails, and account numbers. The image is also editable on a canvas so you can make your own annotations before downloading.
