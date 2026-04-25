@@ -6,6 +6,7 @@ authors:
 - user: freddyaboulton
 - user: abidlabs
 ---
+
 # How to build scalable web apps with OpenAI's Privacy Filter 
 
 OpenAI released Privacy Filter on the Hub this week: an open-source personally-identifiable information (PII) detector that labels text across eight categories in a single forward pass over a 128k context. [Model card](https://huggingface.co/openai/privacy-filter). We spent a few hours building with it and landed on three apps that each reveals a different slice of what it can do.
