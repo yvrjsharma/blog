@@ -5277,13 +5277,31 @@
     - llm
     - ethics
 
-- local: openai-privacy-filter-web-apps
+- local: transformersjs-chrome-extension
   date: April 23, 2026
+  tags:
+    - guide
+    - transformers.js
+    - javascript
+    - chrome-extension
+    - on-device
+
+- local: deepseekv4
+  date: April 24, 2026
+  tags:
+    - llm
+    - moe
+    - long-context
+    - agents
+    - open-source
+    - research
+    - community
+
+- local: openai-privacy-filter-web-apps
+  date: April 27, 2026
   tags:
     - openai
     - privacy-filter
     - web-apps
     - gradio
     - pii
-
-
